@@ -1,0 +1,211 @@
+# Project FREEDOM — Native Voice Lab: free iOS build and verification.
+#
+# Runs on every push to main and on demand. Needs no Apple account and no
+# secrets; on a public repository GitHub does not bill these runner minutes.
+#
+#   tests      lint, TypeScript and the full Jest suite (Linux)
+#   device     the real iPhone build (Release, iphoneos, unsigned), then checks
+#              that llama.cpp, Whisper, the ONNX voice runtime, Kokoro, the
+#              hands-free voice mode and the Freedom character are inside it
+#   simulator  an iPhone 17 simulator build that runs one spoken turn end to
+#              sequentially: synthesized recording -> Whisper -> Freedom ->
+#              Kokoro af_heart. NOT microphone/hands-free/device acceptance.
+name: Freedom iOS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sim_model_repo:
+        description: Hugging Face repo of the GGUF used in the simulator turn
+        default: unsloth/Qwen3.5-2B-GGUF
+      sim_model_file:
+        description: GGUF file used in the simulator turn
+        default: Qwen3.5-2B-Q4_K_M.gguf
+      sim_model_revision:
+        description: Immutable Hugging Face model revision
+        default: f6d5376be1edb4d416d56da11e5397a961aca8ae
+      sim_model_sha256:
+        description: Expected GGUF SHA256
+        default: aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223
+
+permissions:
+  contents: read
+
+concurrency:
+  group: freedom-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22.21.0'
+  PLUS_STORE_GATE: 'false'
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g yarn
+      - run: yarn install --frozen-lockfile
+      - run: ruby --version
+      - name: ESLint
+        if: success() || failure()
+        run: yarn lint
+      - name: TypeScript
+        if: success() || failure()
+        run: yarn typecheck
+      - name: Jest (full suite)
+        if: success() || failure()
+        run: yarn test --ci --runInBand --silent --json --outputFile=jest-results.json
+      - name: Check release and E2E automation exclusion in Hermes
+        if: success() || failure()
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: scripts/freedom/build-hermes-bundles.sh out/hermes
+      - name: Record Linux results without metered artifact storage
+        if: always()
+        run: |
+          if [ -f jest-results.json ]; then
+            node -e 'const r=require("./jest-results.json"); console.log(JSON.stringify({success:r.success,suites:r.numTotalTestSuites,passedSuites:r.numPassedTestSuites,failedSuites:r.numFailedTestSuites,tests:r.numTotalTests,passed:r.numPassedTests,failed:r.numFailedTests,skipped:r.numPendingTests,snapshots:r.snapshot},null,2))'
+          fi
+          find out -name '*.hbc' -exec sha256sum {} \; 2>/dev/null || true
+
+  device:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      NODE_OPTIONS: '--max-old-space-size=3072'
+      EXTRA_PACKAGER_ARGS: '--max-workers 2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g yarn
+      - run: yarn install --frozen-lockfile
+      - name: Restore enriched-markdown native assets
+        run: INIT_CWD="$GITHUB_WORKSPACE" node node_modules/react-native-enriched-markdown/postinstall.mjs
+      - name: Placeholder service config (cloud features are off in the lab)
+        run: scripts/freedom/write-placeholder-config.sh ai.pocketpal
+      - name: Install pods
+        run: cd ios && pod install
+      - name: Select Xcode and Metal toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          xcrun -sdk iphoneos metal -v || xcodebuild -downloadComponent MetalToolchain
+      - name: Build for iPhone (Release, unsigned)
+        run: |
+          set -o pipefail
+          cd ios
+          xcodebuild -workspace PocketPal.xcworkspace -scheme PocketPal \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO 2>&1 | tee ../ios-build.log
+      - name: Upstream payload checks (Metal libraries, Plus gate off)
+        run: |
+          APP=ios/build/Build/Products/Release-iphoneos/PocketPal.app
+          scripts/verify-ios-payload.sh "$APP" --require-marker
+          scripts/verify-plus-gate.sh "$APP" --ungated
+      - name: Verify the voice-call components are in the app
+        run: scripts/freedom/verify-ios-components.sh ios/build/Build/Products/Release-iphoneos/PocketPal.app
+      - name: Record unsigned app evidence without metered artifact storage
+        run: |
+          APP=ios/build/Build/Products/Release-iphoneos/PocketPal.app
+          du -sh "$APP"
+          shasum -a 256 "$APP/PocketPal" "$APP/main.jsbundle"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          echo "Unsigned device app compiled; binary not uploaded to metered artifact storage." >> "$GITHUB_STEP_SUMMARY"
+
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      NODE_OPTIONS: '--max-old-space-size=3072'
+      EXTRA_PACKAGER_ARGS: '--max-workers 2'
+      MODEL_REPO: ${{ inputs.sim_model_repo || 'unsloth/Qwen3.5-2B-GGUF' }}
+      MODEL_FILE: ${{ inputs.sim_model_file || 'Qwen3.5-2B-Q4_K_M.gguf' }}
+      MODEL_REVISION: ${{ inputs.sim_model_revision || 'f6d5376be1edb4d416d56da11e5397a961aca8ae' }}
+      MODEL_SHA256: ${{ inputs.sim_model_sha256 || 'aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g yarn
+      - run: yarn install --frozen-lockfile
+      - name: Restore enriched-markdown native assets
+        run: INIT_CWD="$GITHUB_WORKSPACE" node node_modules/react-native-enriched-markdown/postinstall.mjs
+      - name: Placeholder service config
+        run: scripts/freedom/write-placeholder-config.sh ai.pocketpal
+      - name: Install pods
+        run: cd ios && pod install
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          xcrun -sdk iphoneos metal -v || xcodebuild -downloadComponent MetalToolchain
+      - name: Build for the simulator (E2E automation included)
+        run: |
+          set -o pipefail
+          cd ios
+          E2E_BUILD=true xcodebuild -workspace PocketPal.xcworkspace -scheme PocketPal \
+            -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../sim-build.log
+      - name: Boot an iPhone 17 simulator
+        run: |
+          RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if '.iOS-' in x['identifier'] and x['isAvailable']]; print(max(r,key=lambda x:tuple(map(int,x['version'].split('.'))))['version'])")
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          for rt,devs in d.items():
+              if 'iOS-'+'$RUNTIME'.replace('.','-') in rt:
+                  for x in devs:
+                      if x['name']=='iPhone 17': print(x['udid']); sys.exit()
+          ")
+          echo "iOS $RUNTIME, iPhone 17 $UDID"
+          test -n "$UDID" || { echo "::error::iPhone 17 simulator unavailable"; exit 1; }
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          echo "E2E_DEVICE_UDID=$UDID" >> "$GITHUB_ENV"
+          echo "E2E_DEVICE_NAME=iPhone 17" >> "$GITHUB_ENV"
+          echo "E2E_PLATFORM_VERSION=$RUNTIME" >> "$GITHUB_ENV"
+      - name: Record the spoken question (macOS voice, 16 kHz mono PCM)
+        run: |
+          mkdir -p "$RUNNER_TEMP/freedom"
+          say -v Samantha -o "$RUNNER_TEMP/freedom/q.aiff" "Hi Freedom. What should I cook for dinner tonight?"
+          afconvert -f WAVE -d LEI16@16000 -c 1 "$RUNNER_TEMP/freedom/q.aiff" "$RUNNER_TEMP/freedom/q.wav"
+          python3 -c "import wave,sys; w=wave.open(sys.argv[1]); open(sys.argv[2],'wb').write(w.readframes(w.getnframes())); print(w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes())" \
+            "$RUNNER_TEMP/freedom/q.wav" "$RUNNER_TEMP/freedom/question.pcm"
+          echo "FREEDOM_INPUT_PCM=$RUNNER_TEMP/freedom/question.pcm" >> "$GITHUB_ENV"
+      - name: Download the model
+        run: |
+          [[ "$MODEL_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "$MODEL_FILE" =~ ^[A-Za-z0-9_.-]+\.gguf$ ]]
+          [[ "$MODEL_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$MODEL_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          curl -fL --retry 3 -o "$RUNNER_TEMP/freedom/$MODEL_FILE" "https://huggingface.co/$MODEL_REPO/resolve/$MODEL_REVISION/$MODEL_FILE"
+          ls -l "$RUNNER_TEMP/freedom/$MODEL_FILE"
+          printf '%s  %s\n' "$MODEL_SHA256" "$RUNNER_TEMP/freedom/$MODEL_FILE" | shasum -a 256 -c
+          echo "FREEDOM_MODEL_PATH=$RUNNER_TEMP/freedom/$MODEL_FILE" >> "$GITHUB_ENV"
+      - name: Run the Freedom pipeline on the simulator
+        env:
+          FREEDOM_EXPECT_WORDS: cook,dinner
+          E2E_APP_PATH: ${{ github.workspace }}/ios/build/Build/Products/Release-iphonesimulator/PocketPal.app
+        run: |
+          scripts/freedom/run-simulator-smoke.sh
+      - name: Collect simulator results
+        if: always()
+        run: |
+          if [ -f out/freedom-result.json ]; then
+            cat out/freedom-result.json
+            cat out/freedom-result.json >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No completed simulator result. Inspect the preceding failure."
+          fi

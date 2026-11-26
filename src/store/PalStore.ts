@@ -46,6 +46,11 @@ import type {
 import {ModelOrigin} from '../utils/types';
 import type {Model} from '../utils/types';
 import {downloadPalThumbnail, deletePalThumbnail} from '../utils/imageUtils';
+import {
+  FREEDOM_LAB_PAL_NAME,
+  FREEDOM_LAB_SEEDED_KEY,
+  freedomLabPalData,
+} from '../freedom/labCharacter';
 
 // Track each built-in separately so future defaults can still be introduced.
 // TODO: when adding another built-in pal, extract a shared seed-once helper
@@ -161,6 +166,9 @@ class PalStore {
 
       // Initialize Pip pal (idempotent — see initializePipPal).
       await this.initializePipPal();
+
+      // Project FREEDOM: seed the voice lab character (idempotent).
+      await this.initializeFreedomLabPal();
 
       // Register talent engines (idempotent)
       registerDefaultTalents();
@@ -904,6 +912,24 @@ class PalStore {
       await AsyncStorage.setItem(PIP_SEEDED_KEY, 'true');
     } catch (error) {
       console.error('Error initializing Pip pal:', error);
+    }
+  }
+
+  /** Project FREEDOM voice lab character; seeded once, then user-owned. */
+  private async initializeFreedomLabPal(): Promise<void> {
+    try {
+      if ((await AsyncStorage.getItem(FREEDOM_LAB_SEEDED_KEY)) === 'true') {
+        return;
+      }
+      const existing = this.pals.find(
+        p => p.name === FREEDOM_LAB_PAL_NAME && p.source === 'local',
+      );
+      if (!existing) {
+        await this.addPal(freedomLabPalData());
+      }
+      await AsyncStorage.setItem(FREEDOM_LAB_SEEDED_KEY, 'true');
+    } catch (error) {
+      console.error('Error initializing Freedom lab pal:', error);
     }
   }
 }

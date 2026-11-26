@@ -1,0 +1,146 @@
+# Project FREEDOM — Native Voice Lab: signed build -> TestFlight.
+#
+# DORMANT until the owner has an Apple Developer Program membership.
+# Manual trigger only; it stops at the first step without the values below.
+# The free compile and simulator checks live in freedom-ios.yml.
+#
+# One-time setup after joining the program (all doable in a phone browser):
+#  1. App Store Connect > Users and Access > Integrations > App Store Connect API:
+#     create a key with the "App Manager" role, download the .p8 once.
+#  2. App Store Connect > Apps > "+" > New App: platform iOS, name
+#     "Freedom Lab" (or any free name), bundle ID = FREEDOM_BUNDLE_ID below
+#     (pick "Register a new bundle ID" in the Developer site first if the
+#     list is empty). This workflow requires an existing app record.
+#  3. In this GitHub repository, Settings > Secrets and variables > Actions:
+#     secrets  ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (the .p8 file's text)
+#     variables FREEDOM_BUNDLE_ID (e.g. com.yourname.freedomlab),
+#               APPLE_TEAM_ID (10 characters, Membership details page)
+#  4. Actions > Freedom TestFlight > Run workflow. Then open TestFlight on
+#     the iPhone (internal testing needs no App Review).
+name: Freedom TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_upload:
+        description: Upload a signed build to Apple (requires owner approval)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    if: inputs.confirm_upload
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      NODE_OPTIONS: '--max-old-space-size=8192'
+      BUNDLE_ID: ${{ vars.FREEDOM_BUNDLE_ID }}
+      TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      PLUS_STORE_GATE: 'false'
+      E2E_BUILD: 'false'
+    steps:
+      - name: Require signing configuration
+        run: |
+          missing=""
+          for v in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 BUNDLE_ID TEAM_ID; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing:$missing. See the setup notes at the top of this workflow."
+            exit 1
+          fi
+          [[ "$TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || { echo "::error::APPLE_TEAM_ID must be 10 letters/digits"; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - name: Check the Apple account before building
+        run: |
+          python3 -m pip install --quiet --break-system-packages pyjwt cryptography
+          python3 scripts/freedom/asc-preflight.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.21.0'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: |
+          npm install -g yarn
+          yarn install --frozen-lockfile
+          INIT_CWD="$GITHUB_WORKSPACE" node node_modules/react-native-enriched-markdown/postinstall.mjs
+
+      - name: Placeholder service config (cloud features are off in the lab)
+        run: scripts/freedom/write-placeholder-config.sh "$BUNDLE_ID"
+
+      - name: Use the owner's bundle ID and team
+        run: |
+          python3 scripts/freedom/configure-signing.py
+
+      - name: Install pods
+        run: cd ios && pod install
+
+      - name: Select Xcode and Metal toolchain
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          xcrun -sdk iphoneos metal -v || xcodebuild -downloadComponent MetalToolchain
+
+      - name: Archive (signed automatically with the API key)
+        run: |
+          set -o pipefail
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          umask 077
+          printf '%s' "$ASC_KEY_P8" > "$KEY_PATH"
+          echo "KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          cd ios
+          xcodebuild archive \
+            -workspace PocketPal.xcworkspace -scheme PocketPal \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Freedom.xcarchive" \
+            CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$TEAM_ID" \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee ../archive.log
+
+      - name: Verify the signed app still has every voice component
+        run: |
+          APP="$RUNNER_TEMP/Freedom.xcarchive/Products/Applications/PocketPal.app"
+          scripts/freedom/verify-ios-components.sh "$APP"
+          scripts/verify-plus-gate.sh "$APP" --ungated
+          codesign -d --entitlements :- "$APP" | tee "$RUNNER_TEMP/entitlements.plist"
+          python3 -c "import plistlib,sys; p=plistlib.load(open(sys.argv[1],'rb')); assert p.get('com.apple.developer.kernel.increased-memory-limit') is True" "$RUNNER_TEMP/entitlements.plist"
+
+      - name: Upload to TestFlight
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" << EOL
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOL
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Freedom.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "Upload command succeeded. Apple processing, export compliance and tester access must still be checked."
+
+      - name: Remove the key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8

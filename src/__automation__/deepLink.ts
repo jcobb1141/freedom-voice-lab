@@ -34,6 +34,11 @@ export async function dispatchAutomationDeepLink(
   params: DeepLinkParams,
   navigation?: NavigationLike,
 ): Promise<boolean> {
+  if (params.host === 'freedom-smoke' && __E2E__) {
+    const {runFreedomNative} = require('./freedomNative');
+    await runFreedomNative();
+    return true;
+  }
   if (params.host === 'memory' && params.queryParams?.cmd) {
     const {
       takeMemorySnapshot,
