@@ -13,6 +13,7 @@ export interface PipelinePort {
 export async function runFreedomPipeline(
   port: PipelinePort,
   cancelled: () => boolean = () => false,
+  expectedWords: readonly string[] = ['cook', 'dinner'],
 ) {
   const check = () => {
     if (cancelled()) {
@@ -25,9 +26,13 @@ export async function runFreedomPipeline(
     check();
     const transcript = (await port.transcribe()).trim();
     check();
-    if (!/\bcook\b/i.test(transcript) || !/\bdinner\b/i.test(transcript)) {
+    const words = new Set(transcript.toLowerCase().match(/[a-z]+/g) || []);
+    if (
+      expectedWords.length === 0 ||
+      expectedWords.some(word => !words.has(word.toLowerCase()))
+    ) {
       throw new Error(
-        'Recorded-speech transcription missed expected cook/dinner words',
+        `Recorded-speech transcription missed expected ${expectedWords.join('/')} words`,
       );
     }
     const answer = (await port.generate(transcript)).trim();

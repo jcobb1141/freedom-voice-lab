@@ -188,11 +188,19 @@ jobs:
       - name: Record the spoken question (macOS voice, 16 kHz mono PCM)
         run: |
           mkdir -p "$RUNNER_TEMP/freedom"
-          say -v Samantha -o "$RUNNER_TEMP/freedom/q.aiff" "Hi Freedom. What should I cook for dinner tonight?"
-          afconvert -f WAVE -d LEI16@16000 -c 1 "$RUNNER_TEMP/freedom/q.aiff" "$RUNNER_TEMP/freedom/q.wav"
+          python3 scripts/freedom/prepare-human-speech.py "$RUNNER_TEMP/freedom"
+          afconvert -f WAVE -d LEI16@16000 -c 1 "$RUNNER_TEMP/freedom/question.flac" "$RUNNER_TEMP/freedom/q.wav"
           python3 -c "import wave,sys; w=wave.open(sys.argv[1]); open(sys.argv[2],'wb').write(w.readframes(w.getnframes())); print(w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes())" \
             "$RUNNER_TEMP/freedom/q.wav" "$RUNNER_TEMP/freedom/question.pcm"
           echo "FREEDOM_INPUT_PCM=$RUNNER_TEMP/freedom/question.pcm" >> "$GITHUB_ENV"
+          python3 - "$RUNNER_TEMP/freedom/fixture.json" "$RUNNER_TEMP/freedom/question.pcm" <<'PY'
+          import hashlib, json, pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          data = json.loads(p.read_text())
+          data["pcmSha256"] = hashlib.sha256(pathlib.Path(sys.argv[2]).read_bytes()).hexdigest()
+          p.write_text(json.dumps(data, indent=2))
+          PY
+          echo "FREEDOM_INPUT_METADATA=$RUNNER_TEMP/freedom/fixture.json" >> "$GITHUB_ENV"
       - name: Download the model
         run: |
           [[ "$MODEL_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
@@ -205,10 +213,19 @@ jobs:
           echo "FREEDOM_MODEL_PATH=$RUNNER_TEMP/freedom/$MODEL_FILE" >> "$GITHUB_ENV"
       - name: Run the Freedom pipeline on the simulator
         env:
-          FREEDOM_EXPECT_WORDS: cook,dinner
           E2E_APP_PATH: ${{ github.workspace }}/ios/build/Build/Products/Release-iphonesimulator/PocketPal.app
         run: |
           scripts/freedom/run-simulator-smoke.sh
+      - name: Run the available native Metal-gate XCTest suite
+        if: ${{ !cancelled() && env.E2E_DEVICE_UDID != '' }}
+        timeout-minutes: 15
+        run: |
+          set -o pipefail
+          mkdir -p out
+          E2E_BUILD=true xcodebuild test -workspace ios/PocketPal.xcworkspace -scheme PocketPal \
+            -configuration Release -sdk iphonesimulator -destination "id=$E2E_DEVICE_UDID" \
+            -derivedDataPath ios/build -resultBundlePath out/freedom-xctest.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee out/freedom-xctest.log
       - name: Collect simulator results
         if: always()
         run: |

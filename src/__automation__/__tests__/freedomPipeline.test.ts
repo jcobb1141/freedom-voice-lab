@@ -11,6 +11,26 @@ function port(): jest.Mocked<PipelinePort> {
 }
 
 describe('Freedom sequential smoke contract (mocked components)', () => {
+  it('accepts explicit human-fixture words without changing production engines', async () => {
+    const p = port();
+    p.transcribe.mockResolvedValue('A golden fortune and a happy life.');
+    await expect(
+      runFreedomPipeline(p, undefined, ['golden', 'fortune', 'happy']),
+    ).resolves.toMatchObject({
+      transcript: 'A golden fortune and a happy life.',
+    });
+    expect(p.generate).toHaveBeenCalledWith(
+      'A golden fortune and a happy life.',
+    );
+  });
+  it('does not allow an empty expectation list to bypass transcription checks', async () => {
+    const p = port();
+    await expect(runFreedomPipeline(p, undefined, [])).rejects.toThrow(
+      'missed expected',
+    );
+    expect(p.generate).not.toHaveBeenCalled();
+    expect(p.release).toHaveBeenCalledTimes(1);
+  });
   it('returns transcription and generation and releases resources', async () => {
     const p = port();
     await expect(runFreedomPipeline(p)).resolves.toMatchObject({

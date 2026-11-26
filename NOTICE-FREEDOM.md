@@ -36,6 +36,16 @@ Primary sources checked 2026-11-25:
   declares CC0-1.0 and says this is generated output, not redistributed espeak-ng
   source. That assertion is the publisher's evidence, not an independent legal opinion.
 
+- Human-recorded ASR fixture: [LibriSpeech test-clean](https://www.openslr.org/12/),
+  utterance `61-70968-0002`, under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+  Attribution: **LibriSpeech (c) 2014 by Vassil Panayotov**. The helper retains
+  the archive's original `LICENSE.TXT`, reference transcript and source URL.
+  Changes: selected one utterance and converted FLAC into mono 16 kHz PCM16.
+  The downloaded audio is not covered by this fork's MIT source license.
+  This is a transcription fixture, not voice-cloning authorization or a
+  microphone/physical-device recording.
+
 Keep all upstream and dependency copyright/license notices when distributing.
 Apache redistribution requires a copy of the license, attribution, preserved
 applicable notices, and marking modifications. MIT notices must accompany copies.

@@ -5,7 +5,16 @@ import {initLlama, type LlamaContext} from 'llama.rn';
 import {whisperAsrEngine} from '../services/asr';
 import {getNeuralEngine, ttsRuntime} from '../services/tts';
 import {FREEDOM_LAB_SYSTEM_PROMPT} from '../freedom/labCharacter';
-import {runFreedomPipeline} from './freedomPipeline';
+import {runFreedomPipeline, type PipelinePort} from './freedomPipeline';
+
+interface HumanSpeechFixture {
+  kind: string;
+  dataset: string;
+  utteranceId: string;
+  expectedWords: string[];
+  pcmSha256: string;
+  license: string;
+}
 
 let running = false;
 
@@ -27,12 +36,34 @@ export async function runFreedomNative(): Promise<void> {
   });
   const engine = getNeuralEngine('kokoro');
   try {
+    const fixture: HumanSpeechFixture = JSON.parse(
+      await RNFS.readFile(
+        `${RNFS.DocumentDirectoryPath}/freedom-fixture.json`,
+        'utf8',
+      ),
+    );
+    if (
+      fixture?.kind !== 'human-recorded' ||
+      !Array.isArray(fixture.expectedWords) ||
+      fixture.expectedWords.length < 2 ||
+      fixture.expectedWords.some(word => !/^[a-z]+$/i.test(word)) ||
+      !/^[a-f0-9]{64}$/.test(fixture.pcmSha256)
+    ) {
+      throw new Error('Invalid human-speech fixture metadata');
+    }
+    const inputHash = await RNFS.hash(
+      `${RNFS.DocumentDirectoryPath}/freedom-question.pcm`,
+      'sha256',
+    );
+    if (inputHash !== fixture.pcmSha256) {
+      throw new Error('Human-speech PCM checksum mismatch');
+    }
     await RNFS.writeFile(
       status,
       JSON.stringify({marker: 'FREEDOM_NATIVE_PIPELINE_V1', state: 'running'}),
       'utf8',
     );
-    const result = await runFreedomPipeline({
+    const port: PipelinePort = {
       async prepare() {
         if (!(await whisperAsrEngine.isInstalled('base'))) {
           await whisperAsrEngine.downloadModel('base');
@@ -90,11 +121,17 @@ export async function runFreedomNative(): Promise<void> {
           throw new Error('Native teardown failed');
         }
       },
-    });
+    };
+    const result = await runFreedomPipeline(
+      port,
+      undefined,
+      fixture.expectedWords,
+    );
     await RNFS.writeFile(
       status,
       JSON.stringify({
         ...result,
+        input: {...fixture, actualPcmSha256: inputHash},
         state: 'done',
         starts,
         finishes,

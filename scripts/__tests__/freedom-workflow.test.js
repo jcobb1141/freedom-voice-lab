@@ -35,6 +35,7 @@ describe('active Freedom workflow safety (not the upstream text fixtures)', () =
     const workflow = readWorkflow('freedom-ios.yml');
     for (const job of Object.values(workflow.jobs)) {
       for (const step of job.steps) {
+        expect(Boolean(step.run || step.uses)).toBe(true);
         expect(step.uses || '').not.toMatch(/upload-artifact/);
         expect(step.with?.cache).toBeUndefined();
       }
