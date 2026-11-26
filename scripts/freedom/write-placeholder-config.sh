@@ -22,4 +22,12 @@ Path(".env").write_text(
     "ENABLE_OFFLINE_MODE=true\nAPP_URL=pocketpal://app\n"
     "FIREBASE_FUNCTIONS_URL=https://invalid.invalid\nPALSHUB_API_BASE_URL=https://invalid.invalid\n"
 )
+# The project-level base configuration is deliberately gitignored upstream.
+# Generate only synthetic values; never copy a developer's local config.
+Path("ios/Config").mkdir(parents=True, exist_ok=True)
+Path("ios/Config/Env.xcconfig").write_text(
+    "// Synthetic Freedom CI config; cloud authentication is disabled.\n"
+    "GOOGLE_WEB_CLIENT_ID = freedom-placeholder.apps.invalid\n"
+    "REVERSED_GOOGLE_IOS_CLIENT_ID = com.freedom.invalid.google\n"
+)
 PY
