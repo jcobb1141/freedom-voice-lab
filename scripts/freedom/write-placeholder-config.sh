@@ -5,7 +5,7 @@ python3 - "${1:?bundle ID required}" <<'PY'
 import plistlib, re, sys
 from pathlib import Path
 bundle = sys.argv[1]
-if not re.fullmatch(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+){2,}", bundle):
+if not re.fullmatch(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", bundle):
     raise SystemExit("Invalid bundle ID")
 config = {
     "API_KEY": "placeholder-not-a-real-api-key",

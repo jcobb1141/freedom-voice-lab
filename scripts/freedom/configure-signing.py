@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 bundle, team = os.environ["BUNDLE_ID"], os.environ["TEAM_ID"]
-if not re.fullmatch(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+){2,}", bundle):
+if not re.fullmatch(r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+", bundle):
     raise SystemExit("Invalid BUNDLE_ID")
 if not re.fullmatch(r"[A-Z0-9]{10}", team):
     raise SystemExit("Invalid TEAM_ID")
