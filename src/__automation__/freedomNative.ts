@@ -28,6 +28,23 @@ export async function runFreedomNative(): Promise<void> {
   let starts = 0;
   let finishes = 0;
   const started = Date.now();
+  let stage = 'native-adapter';
+  const stages: {stage: string; elapsedMs: number}[] = [];
+  const progress = async (next: string) => {
+    stage = next;
+    stages.push({stage, elapsedMs: Date.now() - started});
+    await RNFS.writeFile(
+      status,
+      JSON.stringify({
+        marker: 'FREEDOM_NATIVE_PIPELINE_V1',
+        state: 'running',
+        stage,
+        elapsedMs: Date.now() - started,
+        stages,
+      }),
+      'utf8',
+    );
+  };
   const startSub = Speech.onStart(() => {
     starts++;
   });
@@ -36,6 +53,7 @@ export async function runFreedomNative(): Promise<void> {
   });
   const engine = getNeuralEngine('kokoro');
   try {
+    await progress('validate-human-fixture');
     const fixture: HumanSpeechFixture = JSON.parse(
       await RNFS.readFile(
         `${RNFS.DocumentDirectoryPath}/freedom-fixture.json`,
@@ -58,21 +76,21 @@ export async function runFreedomNative(): Promise<void> {
     if (inputHash !== fixture.pcmSha256) {
       throw new Error('Human-speech PCM checksum mismatch');
     }
-    await RNFS.writeFile(
-      status,
-      JSON.stringify({marker: 'FREEDOM_NATIVE_PIPELINE_V1', state: 'running'}),
-      'utf8',
-    );
     const port: PipelinePort = {
       async prepare() {
+        await progress('download-whisper');
         if (!(await whisperAsrEngine.isInstalled('base'))) {
           await whisperAsrEngine.downloadModel('base');
         }
+        await progress('preload-whisper');
         await whisperAsrEngine.preload('base');
+        await progress('download-kokoro');
         if (!(await engine.isInstalled())) {
           await engine.downloadModel();
         }
+        await progress('preload-kokoro');
         await ttsRuntime.acquire(engine, async () => {});
+        await progress('load-llama');
         context = await initLlama({
           model: `${RNFS.DocumentDirectoryPath}/freedom-model.gguf`,
           n_ctx: 2048,
@@ -80,6 +98,7 @@ export async function runFreedomNative(): Promise<void> {
         });
       },
       async transcribe() {
+        await progress('transcribe-human-speech');
         const pcm = await RNFS.readFile(
           `${RNFS.DocumentDirectoryPath}/freedom-question.pcm`,
           'base64',
@@ -89,6 +108,7 @@ export async function runFreedomNative(): Promise<void> {
         ).text;
       },
       async generate(text) {
+        await progress('generate-freedom-reply');
         const reply = await context!.completion({
           messages: [
             {role: 'system', content: FREEDOM_LAB_SYSTEM_PROMPT},
@@ -101,6 +121,7 @@ export async function runFreedomNative(): Promise<void> {
         return reply.text;
       },
       async speak(text) {
+        await progress('synthesize-and-play-kokoro');
         const voice = (await engine.getVoices()).find(v => v.id === 'af_heart');
         if (!voice) {
           throw new Error('Kokoro af_heart voice missing');
@@ -113,12 +134,13 @@ export async function runFreedomNative(): Promise<void> {
       async release() {
         // Attempt every teardown even when one fails.
         const settled = await Promise.allSettled([
+          progress('release-native-engines'),
           whisperAsrEngine.release(),
           ttsRuntime.release(),
           context?.release(),
         ]);
         if (settled.some(item => item.status === 'rejected')) {
-          throw new Error('Native teardown failed');
+          throw new Error('Native teardown or diagnostic reporting failed');
         }
       },
     };
@@ -135,6 +157,7 @@ export async function runFreedomNative(): Promise<void> {
         state: 'done',
         starts,
         finishes,
+        stages,
         elapsedMs: Date.now() - started,
       }),
       'utf8',
@@ -142,7 +165,14 @@ export async function runFreedomNative(): Promise<void> {
   } catch (error) {
     await RNFS.writeFile(
       status,
-      JSON.stringify({state: 'error', error: String(error)}),
+      JSON.stringify({
+        state: 'error',
+        stage,
+        stages,
+        error: String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        elapsedMs: Date.now() - started,
+      }),
       'utf8',
     );
   } finally {

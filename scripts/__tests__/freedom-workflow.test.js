@@ -23,9 +23,17 @@ describe('active Freedom workflow safety (not the upstream text fixtures)', () =
     expect(workflow.permissions).toEqual({contents: 'read'});
     expect(workflow.on.workflow_dispatch.inputs.run_native.default).toBe(true);
     expect(workflow.jobs.device.if).toBe(
-      "github.event_name != 'workflow_dispatch' || inputs.run_native",
+      "github.event_name != 'workflow_dispatch' || (inputs.run_native && inputs.native_target != 'simulator')",
     );
-    expect(workflow.jobs.simulator.if).toBe(workflow.jobs.device.if);
+    expect(workflow.jobs.simulator.if).toBe(
+      "github.event_name != 'workflow_dispatch' || (inputs.run_native && inputs.native_target != 'device')",
+    );
+    expect(workflow.on.workflow_dispatch.inputs.native_target).toEqual({
+      description: 'Native checks to run on a manual retry',
+      type: 'choice',
+      options: ['both', 'simulator', 'device'],
+      default: 'both',
+    });
     for (const job of Object.values(workflow.jobs)) {
       expect(['ubuntu-latest', 'macos-26']).toContain(job['runs-on']);
     }

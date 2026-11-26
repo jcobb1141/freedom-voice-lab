@@ -4,7 +4,7 @@ set -euo pipefail
 BUNDLE="${1:?bundle required}"
 MODE="${2:?release or e2e required}"
 test -s "$BUNDLE"
-MARKERS='FREEDOM_NATIVE_PIPELINE_V1|AUTOMATION_BRIDGE|BENCH_RUN_MATRIX|IAP_FAKE_STORE|memory-snapshot-label|bench-runner-screen-status|IAP_API_BASE_OVERRIDE|PLUS_SHIP_OVERRIDE|PLUS_GATE_PROBE'
+MARKERS='FREEDOM_NATIVE_PIPELINE_V1|FREEDOM_NATIVE_REQUEST_V1|AUTOMATION_BRIDGE|BENCH_RUN_MATRIX|IAP_FAKE_STORE|memory-snapshot-label|bench-runner-screen-status|IAP_API_BASE_OVERRIDE|PLUS_SHIP_OVERRIDE|PLUS_GATE_PROBE'
 case "$MODE" in
   release)
     if LC_ALL=C grep -aqE "$MARKERS" "$BUNDLE"; then

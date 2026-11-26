@@ -8,7 +8,7 @@
 #              that llama.cpp, Whisper, the ONNX voice runtime, Kokoro, the
 #              hands-free voice mode and the Freedom character are inside it
 #   simulator  an iPhone 17 simulator build that runs one spoken turn end to
-#              sequentially: synthesized recording -> Whisper -> Freedom ->
+#              sequentially: recorded human speech -> Whisper -> Freedom ->
 #              Kokoro af_heart. NOT microphone/hands-free/device acceptance.
 name: Freedom iOS
 
@@ -21,6 +21,11 @@ on:
         description: Run macOS device and simulator checks
         type: boolean
         default: true
+      native_target:
+        description: Native checks to run on a manual retry
+        type: choice
+        options: [both, simulator, device]
+        default: both
       sim_model_repo:
         description: Hugging Face repo of the GGUF used in the simulator turn
         default: unsloth/Qwen3.5-2B-GGUF
@@ -83,7 +88,7 @@ jobs:
           find out -name '*.hbc' -exec sha256sum {} \; 2>/dev/null || true
 
   device:
-    if: github.event_name != 'workflow_dispatch' || inputs.run_native
+    if: github.event_name != 'workflow_dispatch' || (inputs.run_native && inputs.native_target != 'simulator')
     runs-on: macos-26
     timeout-minutes: 90
     env:
@@ -132,7 +137,7 @@ jobs:
           echo "Unsigned device app compiled; binary not uploaded to metered artifact storage." >> "$GITHUB_STEP_SUMMARY"
 
   simulator:
-    if: github.event_name != 'workflow_dispatch' || inputs.run_native
+    if: github.event_name != 'workflow_dispatch' || (inputs.run_native && inputs.native_target != 'device')
     runs-on: macos-26
     timeout-minutes: 90
     env:
@@ -185,7 +190,7 @@ jobs:
           echo "E2E_DEVICE_UDID=$UDID" >> "$GITHUB_ENV"
           echo "E2E_DEVICE_NAME=iPhone 17" >> "$GITHUB_ENV"
           echo "E2E_PLATFORM_VERSION=$RUNTIME" >> "$GITHUB_ENV"
-      - name: Record the spoken question (macOS voice, 16 kHz mono PCM)
+      - name: Prepare recorded human speech (16 kHz mono PCM)
         run: |
           mkdir -p "$RUNNER_TEMP/freedom"
           python3 scripts/freedom/prepare-human-speech.py "$RUNNER_TEMP/freedom"

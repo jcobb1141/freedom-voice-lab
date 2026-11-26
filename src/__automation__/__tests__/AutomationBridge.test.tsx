@@ -5,6 +5,9 @@ import {AutomationBridge} from '../AutomationBridge';
 
 // This suite checks the bridge's build-time gate and child wiring, not native
 // adapter behavior. Do not start real store hydration/network work on import.
+jest.mock('../adapters/FreedomAdapter', () => ({
+  FreedomAdapter: () => 'FreedomAdapter',
+}));
 jest.mock('../adapters/MemoryAdapter', () => ({
   MemoryAdapter: () => 'MemoryAdapter',
 }));
@@ -42,6 +45,7 @@ describe('AutomationBridge', () => {
     // duplicate that suite.
     expect(toJSON()).not.toBeNull();
     expect(toJSON()).toEqual([
+      'FreedomAdapter',
       'MemoryAdapter',
       'TTSAdapter',
       'IapAdapter',

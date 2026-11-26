@@ -1,5 +1,6 @@
 import React from 'react';
 
+import {FreedomAdapter} from './adapters/FreedomAdapter';
 import {IapAdapter} from './adapters/IapAdapter';
 import {MemoryAdapter} from './adapters/MemoryAdapter';
 import {OnboardingBypass} from './adapters/OnboardingBypass';
@@ -25,6 +26,7 @@ export const AutomationBridge: React.FC = () => {
   }
   return (
     <>
+      <FreedomAdapter />
       <MemoryAdapter />
       <TTSAdapter />
       <IapAdapter />
