@@ -6,6 +6,17 @@ import {streamChatCompletion} from '../../api/openai';
 import type {ServerType} from '../../utils/serverTypes';
 import {RemoteModelRequestWithdrawnError} from '../../utils/errors';
 
+// Router readiness does not exercise device discovery or its background fetch.
+// Keep those boundaries deterministic, as in the other ModelStore unit suites.
+jest.mock('../../services/deviceRules/rules', () => ({
+  fetchRules: jest.fn().mockResolvedValue(null),
+}));
+jest.mock('../../services/deviceRules/signals', () => ({
+  readDeviceSignals: jest
+    .fn()
+    .mockResolvedValue({ramBytes: 8 * 1e9, machine: 'iPhone15,2'}),
+}));
+
 jest.mock('../ServerStore', () => ({
   serverStore: {
     getApiKey: jest.fn().mockResolvedValue(undefined),

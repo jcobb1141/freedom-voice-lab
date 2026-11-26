@@ -3,6 +3,24 @@ import {render} from '@testing-library/react-native';
 
 import {AutomationBridge} from '../AutomationBridge';
 
+// This suite checks the bridge's build-time gate and child wiring, not native
+// adapter behavior. Do not start real store hydration/network work on import.
+jest.mock('../adapters/MemoryAdapter', () => ({
+  MemoryAdapter: () => 'MemoryAdapter',
+}));
+jest.mock('../adapters/TTSAdapter', () => ({
+  TTSAdapter: () => 'TTSAdapter',
+}));
+jest.mock('../adapters/IapAdapter', () => ({
+  IapAdapter: () => 'IapAdapter',
+}));
+jest.mock('../adapters/VoiceAdapter', () => ({
+  VoiceAdapter: () => 'VoiceAdapter',
+}));
+jest.mock('../adapters/OnboardingBypass', () => ({
+  OnboardingBypass: () => 'OnboardingBypass',
+}));
+
 describe('AutomationBridge', () => {
   const origE2E = (global as any).__E2E__;
 
@@ -23,5 +41,12 @@ describe('AutomationBridge', () => {
     // MemoryAdapter.test.tsx. Re-testing testID presence here would
     // duplicate that suite.
     expect(toJSON()).not.toBeNull();
+    expect(toJSON()).toEqual([
+      'MemoryAdapter',
+      'TTSAdapter',
+      'IapAdapter',
+      'VoiceAdapter',
+      'OnboardingBypass',
+    ]);
   });
 });
