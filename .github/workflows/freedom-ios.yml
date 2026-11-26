@@ -17,6 +17,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      run_native:
+        description: Run macOS device and simulator checks
+        type: boolean
+        default: true
       sim_model_repo:
         description: Hugging Face repo of the GGUF used in the simulator turn
         default: unsloth/Qwen3.5-2B-GGUF
@@ -79,6 +83,7 @@ jobs:
           find out -name '*.hbc' -exec sha256sum {} \; 2>/dev/null || true
 
   device:
+    if: github.event_name != 'workflow_dispatch' || inputs.run_native
     runs-on: macos-26
     timeout-minutes: 90
     env:
@@ -127,6 +132,7 @@ jobs:
           echo "Unsigned device app compiled; binary not uploaded to metered artifact storage." >> "$GITHUB_STEP_SUMMARY"
 
   simulator:
+    if: github.event_name != 'workflow_dispatch' || inputs.run_native
     runs-on: macos-26
     timeout-minutes: 90
     env:

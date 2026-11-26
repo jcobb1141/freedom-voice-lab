@@ -4,10 +4,10 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
 const ACTION = path.join(
   ROOT,
-  '.github',
-  'actions',
-  'setup-hexagon-sdk',
-  'action.yml',
+  'scripts',
+  'freedom',
+  'upstream-ci-fixtures',
+  'setup-hexagon-sdk.action.yml.txt',
 );
 const LLAMA_RN_CMAKE = [
   path.join(
