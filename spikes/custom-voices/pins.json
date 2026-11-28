@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "sources": {
+    "qwenSDK": {
+      "repository": "Neywa-Labs/mlx-audio-swift",
+      "revision": "c7755e2504181a771941bb6f9f26ea79b3cdfce3",
+      "license": "MIT",
+      "path": "Sources/MLXAudioTTS/Models/Qwen3TTS/Qwen3TTS.swift",
+      "runtime": "mlx-swift 0.33.0",
+      "runtimeRevision": "7ede4fd6d05f63305c1c0ebf4f8c1909a637c574",
+      "evidence": "Exact native port selected for the experiment, not production adoption"
+    },
+    "pocketCoreML": {
+      "repository": "FluidInference/FluidAudio",
+      "revision": "e2ea498dafd6db9b3f18f0f644bc35312b3a7679",
+      "license": "Apache-2.0",
+      "path": "Sources/FluidAudio/TTS/PocketTTS/PocketTtsManager.swift",
+      "family": "Pocket TTS 100M, english_2026-10, v2.1",
+      "notSubstitutable": ["PocketTtsSmallManager", "catalog-only voices"]
+    },
+    "qwenSwift": {
+      "repository": "AtomGradient/swift-qwen3-tts",
+      "revision": "27a5b5b2c5d55258bead2c6e851208987e1ca225",
+      "license": "MIT",
+      "licenseEvidence": "README declaration; no standalone LICENSE file in the inspected tree. Preserve this distinction before redistribution.",
+      "path": "Sources/Qwen3TTS/Models/Qwen3.swift",
+      "notSubstitutable": ["CustomVoice", "compressed built-in speaker model"]
+    }
+  },
+  "models": {
+    "pocketOriginal": {
+      "repository": "kyutai/pocket-tts",
+      "revision": "db04f0e653473e5c7333c69686ac92b7460b0c1d",
+      "license": "CC-BY-4.0",
+      "gated": "auto",
+      "downloadAllowed": false,
+      "reason": "No owner acceptance of gated cloning conditions is recorded; no mirror workaround."
+    },
+    "pocketConversion": {
+      "repository": "FluidInference/pocket-tts-coreml",
+      "revision": "c2e998e269e4d4b51f74061faddb8450cd8f9a9a",
+      "license": "CC-BY-4.0",
+      "gated": false,
+      "downloadAllowed": false,
+      "conditioningEncoder": "mimi_encoder.mlmodelc",
+      "reason": "An ungated conversion does not establish acceptance of the original cloning conditions or clear bundled voice rights."
+    },
+    "qwenVoiceDesign": {
+      "repository": "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16",
+      "revision": "7d3824abff87e49756bb0f83fb5411de75d160c4",
+      "license": "Apache-2.0",
+      "gated": false,
+      "file": "model.safetensors",
+      "bytes": 3833402589,
+      "sha256": "96ae28bec2205ec0b5e0c750bea2b8a5deac4f14d33a8a25a5f753299486b70e",
+      "upstreamRepository": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+      "upstreamRevision": "5ecdb67327fd37bb2e042aab12ff7391903235d3"
+    },
+    "qwenBase": {
+      "repository": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16",
+      "revision": "1eccf1cb2519b5a4e8a95b5f0544f3303568164f",
+      "license": "Apache-2.0",
+      "gated": false,
+      "file": "model.safetensors",
+      "bytes": 1829344448,
+      "sha256": "d7c7ed3e3464e3e59de0f955b3755891fa8319ff061c3f0307fe2e1343bc122d",
+      "upstreamRepository": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+      "upstreamRevision": "5d83992436eae1d760afd27aff78a71d676296fc"
+    },
+    "qwenCodec": {
+      "repository": "Qwen/Qwen3-TTS-Tokenizer-12Hz",
+      "revision": "7dd38ad4e9bad454aae9cd937d0cd577604fe229",
+      "license": "Apache-2.0",
+      "gated": false,
+      "file": "model.safetensors",
+      "bytes": 682293092,
+      "sha256": "836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258"
+    }
+  },
+  "policy": {
+    "samples": "Synthetic design output or separately documented owner-authorized audio only",
+    "publicCI": "No private samples, embeddings, conditioning or generated voice assets",
+    "productionAdoption": "Not authorized by a source/API check or host probe"
+  }
+}

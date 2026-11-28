@@ -13,9 +13,12 @@ jobs:
     # Standard public-repository runner only. No paid/larger-runner labels.
     runs-on: macos-26
     timeout-minutes: 10
+    outputs:
+      metal: ${{ steps.probe.outputs.metal }}
     steps:
       - uses: actions/checkout@v4
       - name: Probe native host without models or private audio
+        id: probe
         shell: bash
         run: |
           set -euo pipefail
@@ -23,6 +26,7 @@ jobs:
           uname -sm
           swiftc spikes/custom-voices/HostProbe.swift -o "$RUNNER_TEMP/voice-host-probe"
           "$RUNNER_TEMP/voice-host-probe" "$RUNNER_TEMP/voice-host.json"
+          echo "metal=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))[\"metalDefaultDeviceAvailable\"]).lower())' \"$RUNNER_TEMP/voice-host.json\")" >> "$GITHUB_OUTPUT"
           {
             echo '## Native custom-voice host capability (not device acceptance)'
             echo '```json'
@@ -30,3 +34,46 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       # No caches, artifacts, weights, secrets, samples or billing changes.
+  qwen:
+    needs: host
+    if: needs.host.outputs.metal == 'true'
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile pinned native Qwen design and Base harness
+        timeout-minutes: 25
+        working-directory: spikes/custom-voices/qwen
+        run: |
+          set -euo pipefail
+          swift --version
+          swift build -c release -j 2
+          cat Package.resolved
+      - name: Download exact ungated design and Base assets
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          python3 spikes/custom-voices/download_models.py qwenVoiceDesign "$RUNNER_TEMP/qwen-design"
+          python3 spikes/custom-voices/download_models.py qwenBase "$RUNNER_TEMP/qwen-base"
+      - name: Native design, saved conditioning, repeat synthesis and cancellation
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, subprocess
+          root = pathlib.Path(os.environ["RUNNER_TEMP"])
+          executable = pathlib.Path("spikes/custom-voices/qwen/.build/release/VoiceRuntime").resolve()
+          private = root / "voice-spike-private"
+          for stage, model in [("design", "qwen-design"), ("clone", "qwen-base"), ("reopen", "qwen-base")]:
+              # Separate processes unload the design model before loading Base.
+              # No private or human voice assets are accepted by this job.
+              subprocess.run(["/usr/bin/time", "-l", str(executable), stage,
+                              str(root / model), str(private)], check=True, timeout=360)
+          PY
+      - name: Delete transient synthetic voice assets
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/voice-spike-private"
+      # No upload-artifact or cache: models and synthetic conditioning stay on
+      # this ephemeral runner; no private samples or owner credentials are used.
