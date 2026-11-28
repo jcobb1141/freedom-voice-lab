@@ -26,7 +26,13 @@ jobs:
           uname -sm
           swiftc spikes/custom-voices/HostProbe.swift -o "$RUNNER_TEMP/voice-host-probe"
           "$RUNNER_TEMP/voice-host-probe" "$RUNNER_TEMP/voice-host.json"
-          echo "metal=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))[\"metalDefaultDeviceAvailable\"]).lower())' \"$RUNNER_TEMP/voice-host.json\")" >> "$GITHUB_OUTPUT"
+          python3 - "$RUNNER_TEMP/voice-host.json" "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          with open(sys.argv[1]) as source:
+              metal = json.load(source)["metalDefaultDeviceAvailable"]
+          with open(sys.argv[2], "a") as output:
+              output.write(f"metal={str(metal).lower()}\n")
+          PY
           {
             echo '## Native custom-voice host capability (not device acceptance)'
             echo '```json'
