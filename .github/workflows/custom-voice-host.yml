@@ -71,7 +71,7 @@ jobs:
           cat "$RUNNER_TEMP/voice-schemes.json"
           # MLX's Metal shaders are not built by `swift build`.
           # Build the executable AND its resource bundle through Xcode.
-          xcodebuild -scheme VoiceRuntime -configuration Release \
+          xcodebuild -scheme PrivateVoiceSpike -configuration Release \
             -destination 'platform=macOS,arch=arm64' -jobs 2 \
             -derivedDataPath "$RUNNER_TEMP/voice-derived" \
             -onlyUsePackageVersionsFromResolvedFile \

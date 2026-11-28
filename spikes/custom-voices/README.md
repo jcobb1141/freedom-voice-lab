@@ -85,7 +85,7 @@ swiftc native/custom-voice-spike/HostProbe.swift -o "$work/host-probe"
 "$work/host-probe" "$work/host.json"
 swift package --package-path native/custom-voice-spike/qwen resolve
 (cd native/custom-voice-spike/qwen && \
-  xcodebuild -scheme VoiceRuntime -configuration Release \
+  xcodebuild -scheme PrivateVoiceSpike -configuration Release \
     -destination 'platform=macOS,arch=arm64' -jobs 2 \
     -derivedDataPath "$work/derived" \
     -onlyUsePackageVersionsFromResolvedFile build CODE_SIGNING_ALLOWED=NO)
