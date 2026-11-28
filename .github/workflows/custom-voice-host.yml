@@ -23,20 +23,6 @@ jobs:
         run: |
           set -euo pipefail
           swift --version
-          python3 - <<'PY'
-          import json, os, pathlib
-          pins = json.loads(pathlib.Path("Package.resolved").read_text())["pins"]
-          (pathlib.Path(os.environ["RUNNER_TEMP"]) / "voice-pins-before.json").write_text(json.dumps(pins, sort_keys=True))
-          PY
-          swift package resolve
-          python3 - <<'PY'
-          import json, os, pathlib
-          expected = json.loads((pathlib.Path(os.environ["RUNNER_TEMP"]) / "voice-pins-before.json").read_text())
-          actual = json.loads(pathlib.Path("Package.resolved").read_text())["pins"]
-          assert expected == actual, "Dependency pins changed; do not build unreviewed revisions"
-          PY
-          xcodebuild -list -json > "$RUNNER_TEMP/voice-schemes.json"
-          cat "$RUNNER_TEMP/voice-schemes.json"
           uname -sm
           swiftc spikes/custom-voices/HostProbe.swift -o "$RUNNER_TEMP/voice-host-probe"
           "$RUNNER_TEMP/voice-host-probe" "$RUNNER_TEMP/voice-host.json"
@@ -69,6 +55,20 @@ jobs:
         run: |
           set -euo pipefail
           swift --version
+          python3 - <<'PY'
+          import json, os, pathlib
+          pins = json.loads(pathlib.Path("Package.resolved").read_text())["pins"]
+          (pathlib.Path(os.environ["RUNNER_TEMP"]) / "voice-pins-before.json").write_text(json.dumps(pins, sort_keys=True))
+          PY
+          swift package resolve
+          python3 - <<'PY'
+          import json, os, pathlib
+          expected = json.loads((pathlib.Path(os.environ["RUNNER_TEMP"]) / "voice-pins-before.json").read_text())
+          actual = json.loads(pathlib.Path("Package.resolved").read_text())["pins"]
+          assert expected == actual, "Dependency pins changed; do not build unreviewed revisions"
+          PY
+          xcodebuild -list -json > "$RUNNER_TEMP/voice-schemes.json"
+          cat "$RUNNER_TEMP/voice-schemes.json"
           # MLX's Metal shaders are not built by `swift build`.
           # Build the executable AND its resource bundle through Xcode.
           xcodebuild -scheme VoiceRuntime -configuration Release \

@@ -83,6 +83,7 @@ work="$PWD/generated-artifacts/custom-voice-spike-local"
 mkdir -p "$work"
 swiftc native/custom-voice-spike/HostProbe.swift -o "$work/host-probe"
 "$work/host-probe" "$work/host.json"
+swift package --package-path native/custom-voice-spike/qwen resolve
 (cd native/custom-voice-spike/qwen && \
   xcodebuild -scheme VoiceRuntime -configuration Release \
     -destination 'platform=macOS,arch=arm64' -jobs 2 \

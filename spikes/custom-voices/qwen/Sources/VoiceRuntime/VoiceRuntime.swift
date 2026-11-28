@@ -84,7 +84,7 @@ struct VoiceRuntime {
             }
             if stage == "reopen" {
                 let (started, startSignal) = AsyncStream<Void>.makeStream()
-                let generation = Task {
+                let generation = Task.detached {
                     startSignal.yield(())
                     startSignal.finish()
                     // Own the producer task directly. Cancelling an async-stream
