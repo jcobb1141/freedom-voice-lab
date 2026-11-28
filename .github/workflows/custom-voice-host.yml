@@ -50,13 +50,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Compile pinned native Qwen design and Base harness
-        timeout-minutes: 25
+        timeout-minutes: 35
         working-directory: spikes/custom-voices/qwen
         run: |
           set -euo pipefail
           swift --version
-          swift build -c release -j 2
+          # MLX's Metal shaders are not built by `swift build`.
+          # Build the executable AND its resource bundle through Xcode.
+          xcodebuild -scheme VoiceRuntime -configuration Release \
+            -destination 'platform=macOS,arch=arm64' -jobs 2 \
+            -derivedDataPath "$RUNNER_TEMP/voice-derived" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            build CODE_SIGNING_ALLOWED=NO \
+            > "$RUNNER_TEMP/voice-build.log" 2>&1 \
+            || { tail -100 "$RUNNER_TEMP/voice-build.log"; exit 1; }
+          tail -8 "$RUNNER_TEMP/voice-build.log"
           cat Package.resolved
+      - name: Verify MLX shader resources before model downloads
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/voice-derived/Build/Products/Release/VoiceRuntime" metal-smoke
       - name: Download exact ungated design and Base assets
         timeout-minutes: 15
         run: |
@@ -70,7 +83,7 @@ jobs:
           python3 - <<'PY'
           import os, pathlib, subprocess
           root = pathlib.Path(os.environ["RUNNER_TEMP"])
-          executable = pathlib.Path("spikes/custom-voices/qwen/.build/release/VoiceRuntime").resolve()
+          executable = root / "voice-derived/Build/Products/Release/VoiceRuntime"
           private = root / "voice-spike-private"
           for stage, model in [("design", "qwen-design"), ("clone", "qwen-base"), ("reopen", "qwen-base")]:
               # Separate processes unload the design model before loading Base.

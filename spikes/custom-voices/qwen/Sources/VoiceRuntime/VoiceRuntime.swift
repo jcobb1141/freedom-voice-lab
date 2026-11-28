@@ -25,6 +25,13 @@ struct VoiceRuntime {
 
     static func main() async throws {
         let args = CommandLine.arguments
+        if args.count == 2, args[1] == "metal-smoke" {
+            let actual = (MLXArray([Float(1), 2, 3]) * 2).asArray(Float.self)
+            guard actual == [2, 4, 6] else { throw SpikeError.invalid("MLX compute smoke") }
+            try metric(["stage": "metal-smoke", "numericResultVerified": true,
+                        "modelInferenceExecuted": false])
+            return
+        }
         guard args.count == 4, ["design", "clone", "reopen"].contains(args[1]) else {
             throw SpikeError.invalid("usage: VoiceRuntime design|clone|reopen model-directory private-output-directory")
         }
@@ -76,27 +83,38 @@ struct VoiceRuntime {
                 throw SpikeError.invalid("conditioning changed during synthesis")
             }
             if stage == "reopen" {
+                let (started, startSignal) = AsyncStream<Void>.makeStream()
                 let generation = Task {
-                    let stream = model.generateStream(
+                    startSignal.yield(())
+                    startSignal.finish()
+                    // Own the producer task directly. Cancelling an async-stream
+                    // consumer alone cannot prove native inference has stopped.
+                    let audio = try await model.generate(
                         text: String(repeating: "A long cancellation test sentence. ", count: 50),
                         conditioning: conditioning,
                         generationParameters: GenerateParameters(maxTokens: 512))
-                    for try await _ in stream { try Task.checkCancellation() }
+                    try Task.checkCancellation()
+                    return audio
                 }
+                for await _ in started { break }
                 try await Task.sleep(for: .milliseconds(300))
                 let cancelStart = Date()
                 generation.cancel()
+                var cancellationAcknowledged = false
                 do {
-                    try await generation.value
+                    _ = try await generation.value
                 } catch is CancellationError {
-                    // Expected cooperative stop, not an inference success.
+                    cancellationAcknowledged = true
                 }
                 let ms = Date().timeIntervalSince(cancelStart) * 1_000
-                try metric(["stage": "cancel", "consumerCompletionMs": ms,
+                try metric(["stage": "cancel", "producerCompletionMs": ms,
                             "withinOneSecond": ms <= 1_000,
-                            "nativeProducerJoinObserved": false,
+                            "nativeProducerJoinObserved": true,
+                            "cancellationAcknowledged": cancellationAcknowledged,
                             "physicalPlaybackFlushTested": false])
-                guard ms <= 1_000 else { throw SpikeError.invalid("host cancellation exceeded one second") }
+                guard cancellationAcknowledged, ms <= 1_000 else {
+                    throw SpikeError.invalid("native producer cancellation did not acknowledge within one second")
+                }
             }
         }
         try metric(["stage": stage + "-done", "elapsedSeconds": Date().timeIntervalSince(start),
