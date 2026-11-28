@@ -4,6 +4,9 @@ import PackageDescription
 let package = Package(
     name: "PrivateVoiceSpike",
     platforms: [.macOS(.v15), .iOS(.v18)],
+    products: [
+        .executable(name: "VoiceRuntime", targets: ["VoiceRuntime"])
+    ],
     dependencies: [
         .package(url: "https://github.com/Neywa-Labs/mlx-audio-swift.git",
                  revision: "c7755e2504181a771941bb6f9f26ea79b3cdfce3"),
