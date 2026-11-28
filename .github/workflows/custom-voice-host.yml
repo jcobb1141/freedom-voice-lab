@@ -1,0 +1,27 @@
+name: Custom voice isolated host probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  host:
+    # Standard public-repository runner only. No paid/larger-runner labels.
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe native host without models or private audio
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift --version
+          uname -sm
+          swiftc spikes/custom-voices/HostProbe.swift -o "$RUNNER_TEMP/voice-host-probe"
+          "$RUNNER_TEMP/voice-host-probe" "$RUNNER_TEMP/voice-host.json"
+          {
+            echo '## Native custom-voice host capability (not device acceptance)'
+            echo '```json'
+            cat "$RUNNER_TEMP/voice-host.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # No caches, artifacts, weights, secrets, samples or billing changes.
