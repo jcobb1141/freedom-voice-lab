@@ -1,5 +1,10 @@
 name: Custom voice isolated host probe
 on:
+  push:
+    branches: [verification/custom-voice-spike]
+    paths:
+      - .github/workflows/custom-voice-host.yml
+      - spikes/custom-voices/**
   workflow_dispatch:
 permissions:
   contents: read
